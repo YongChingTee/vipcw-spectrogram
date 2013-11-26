@@ -125,8 +125,8 @@ int main(int argc, char *argv[])
 
     // printf("header_len is %d\n", header_len);
 
-	char junk [] = "abcdefg";
-	n = write(newsockfd, (char *) junk, sizeof(junk));
+	//char junk [] = "abcdefg";
+	//n = write(newsockfd, (char *) junk, sizeof(junk));
     int k = 0;
     while(1){
     //while(k < 5){
