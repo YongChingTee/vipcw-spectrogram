@@ -13,8 +13,7 @@
 #include "fft_socket_header.h"
 
 //#define AXIS_START 0
-#define CAMERA_WIDTH 512
-#define CAMERA_HEIGHT 300
+#define CAMERA_HEIGHT 500
 #define BLUEMAC(x) (MIN((MAX((4*(0.75-(x))), 0.)), 1.) * 255)
 #define REDMAC(x) (MIN((MAX((4*((x)-0.25)), 0.)), 1.) * 255)
 #define GREENMAC(x) (MIN((MAX((4*fabs((x)-0.5)-1.), 0.)), 1.) * 255)
@@ -23,6 +22,7 @@ GtkWidget *image;
 char buff[20];
 double *buffer;
 int samp_rate;
+int CAMERA_WIDTH;
 int port_num;
 int sockfd;
 int n;
@@ -47,6 +47,7 @@ struct pixel
 };
 
 struct pixel* rgbImage;
+struct pixel* rgbImageTemp;
 
 void error1(const char *msg)
 {
@@ -94,46 +95,29 @@ int getData()
 int shift()
 {
 	int i, j;
-	double val = 0;
-	int count = 0;
-	/*shifting data in pixbuff*/
-	for(j=0; j<CAMERA_HEIGHT; j++)
+	count++;
+	if( count % 2)
 	{
-		for(i = CAMERA_WIDTH-1; i >=1; i--)
+		memcpy(rgbImageTemp + (CAMERA_WIDTH), rgbImage, (CAMERA_HEIGHT-1)*CAMERA_WIDTH*3);
+		for(j=0; j<CAMERA_WIDTH; j++)
 		{
-			rgbImage[j*CAMERA_WIDTH+i] = rgbImage[j*CAMERA_WIDTH+i-1];
+			rgbImageTemp[j].blue = BLUEMAC(buffer[j]);
+			rgbImageTemp[j].red = REDMAC(buffer[j]);
+			rgbImageTemp[j].green = GREENMAC(buffer[j]);
 		}
+		loadImage(rgbImageTemp);
 	}
-	
-	//for(i = 0 ; i <(int)((double)samp_rate *0.2); i++)
-	for(i = (int)((double)samp_rate * 0.8) ; i < samp_rate; i++)
+	else
 	{
-		val += buffer[i];
-		count ++;
+		memcpy(rgbImage + (CAMERA_WIDTH), rgbImageTemp, (CAMERA_HEIGHT-1)*CAMERA_WIDTH*3);
+		for(j=0; j<CAMERA_WIDTH; j++)
+		{
+			rgbImage[j].blue = BLUEMAC(buffer[j]);
+			rgbImage[j].red = REDMAC(buffer[j]);
+			rgbImage[j].green = GREENMAC(buffer[j]);
+		}
+		loadImage(rgbImage);
 	}
-
-	val = val/count;
-
-	printf("val = %lf\n", val);
-
-	for(i = 0 ; i < (CAMERA_HEIGHT-(int)((double)CAMERA_HEIGHT * val)); i++)
-	{
-		rgbImage[i*CAMERA_WIDTH].blue = BLUEMAC(0);
-		rgbImage[i*CAMERA_WIDTH].red = REDMAC(0);
-		rgbImage[i*CAMERA_WIDTH].green = GREENMAC(0);
-	}
-
-	for(i = (CAMERA_HEIGHT-(int)((double)CAMERA_HEIGHT * val)); i < CAMERA_HEIGHT ; i++)
-	{		
-		rgbImage[i*CAMERA_WIDTH].blue = BLUEMAC(val);
-		rgbImage[i*CAMERA_WIDTH].red = REDMAC(val);
-		rgbImage[i*CAMERA_WIDTH].green = GREENMAC(val);
-	}
-	//count++;
-	
-	fprintf(stderr, "Loading image... ");
-	loadImage(rgbImage);
-	fprintf(stderr, "Image loaded.\n");
 	return 1;
 }
 
@@ -142,9 +126,8 @@ int main(int argc, char *argv[])
     	GtkWidget *window;
 	int i, j, k;
 	count = 0;
+	struct hostent *server;
 	int sync = 0;
-	double val = 0;
-	int count = 0;
 
 	/*initiate gtk*/
 	gtk_init(&argc, &argv);
@@ -188,6 +171,9 @@ int main(int argc, char *argv[])
 	{
 		printf("Sender has closed connection1\n");
 		exit(0);
+	} else if( n > 0)
+	{
+		printf("Read %d bytes from header, header.constSync is %X\n", n, header.constSync);	
 	}
 	do
 	{
@@ -247,24 +233,30 @@ int main(int argc, char *argv[])
 
 	//Initializing structures
 	samp_rate = header.ptsPerFFT;
-	//CAMERA_WIDTH = samp_rate;
+	CAMERA_WIDTH = samp_rate;
 	rgbImage = malloc(sizeof(struct pixel) * (CAMERA_HEIGHT*CAMERA_WIDTH));
+	rgbImageTemp = malloc(sizeof(struct pixel) * (CAMERA_HEIGHT*CAMERA_WIDTH));
 	buffer = malloc(sizeof(double) * samp_rate);
 	bufSize = sizeof(double)* samp_rate;
 	length = (sizeof(struct fft_header) + sizeof(double)* samp_rate);
+	size =  length* 2 + 1;
 	tempBuf = malloc(length);
 
 	//First Data
 	fprintf(stderr, "Reading data... ");
     	n = read(sockfd, (char *) buffer, header.ptsPerFFT * sizeof(double));
-    	if (n < 0)
-    		error1("ERROR reading from socket");
+	if (n < 0)
+		error1("ERROR reading from socket");
 	else if( n == 0)
 	{
 		printf("Sender has closed connection\n");
 		exit(0);
 	}
-	printf("here1\n");
+	else 
+	{
+		printf("Read %d bytes data\n", n);
+	}
+	
 	/*End*/
 	
 	//gtk initialization
@@ -278,12 +270,11 @@ int main(int argc, char *argv[])
 			rgbImage[j+i*CAMERA_WIDTH].green = GREENMAC(0);
 		}
 	}
-	printf("here2\n");
-	for(i = 0; i < CAMERA_HEIGHT; i++)
+	for(i = 0; i<CAMERA_WIDTH ; i++)
 	{		
-		rgbImage[i*CAMERA_WIDTH].blue = BLUEMAC(1);
-		rgbImage[i*CAMERA_WIDTH].red = REDMAC(1);
-		rgbImage[i*CAMERA_WIDTH].green = GREENMAC(1);
+		rgbImage[i].blue = BLUEMAC(buffer[i]);
+		rgbImage[i].red = REDMAC(buffer[i]);
+		rgbImage[i].green = GREENMAC(buffer[i]);
 	}
 	
 	//loadeImage function
